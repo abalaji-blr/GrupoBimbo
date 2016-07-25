@@ -1,0 +1,192 @@
+---
+title: "GrupoBimboEDA"
+author: "Anandan Balaji"
+output: 
+  pdf_document:
+   toc: yes
+   number_sections: yes
+---
+
+# Grupo Bimbo Exploratory Data Analysis
+
+Objective: Predict the demand based on historical sales data.
+
+## About Dataset & Data fields
+
+The dataset is available at [www.kaagle.com](https://www.kaggle.com/c/grupo-bimbo-inventory-demand/data)
+
+Some of the important data fields:
+
+  *  Semana — Week number (From Thursday to Wednesday)
+  *  Agencia_ID — Sales Depot ID
+  *  Canal_ID — Sales Channel ID
+  *  Ruta_SAK — Route ID (Several routes = Sales Depot)
+  *  Cliente_ID — Client ID
+  *  NombreCliente — Client name
+  *  Producto_ID — Product ID
+  *  NombreProducto — Product Name
+  *  **Venta_uni_hoy — Sales unit this week** (integer)
+  *  Venta_hoy — Sales this week (unit: pesos)
+  *  Dev_uni_proxima — Returns unit next week (integer)
+  *  Dev_proxima — Returns next week (unit: pesos)
+  *  **Demanda_uni_equil — Adjusted Demand** (integer) (This is the target you will predict)
+
+## Train dataset
+
+```{r}
+library("data.table")
+system.time(train <- fread("./new_train.csv", header = TRUE))
+
+system.time(test <- fread("./test.csv", header = TRUE))
+
+system.time(product <- fread("./producto_tabla.csv", header=TRUE))
+```
+
+```{r}
+#structure of train
+str(train)
+
+## number of observations
+nrow(train)
+
+## get the weekly data - ie., number of transactions in that particular week.
+table(train$Semana)
+
+## get the demand info for every week
+## tapply(X-vector, Index-variable, function)
+##
+tapply(train$Demanda_uni_equil, train$Semana, sum)
+
+## number of unque products
+length(unique(train$Producto_ID))
+
+# which is the highest demand product
+prod_results <- tapply(train$Demanda_uni_equil, train$Producto_ID, sum)
+prod_results <- sort(prod_results, decreasing = TRUE)
+
+highest_demand_prod <- prod_results[1]
+highest_demand_prod
+
+## the most popular product is
+
+str(product)
+
+product$NombreProducto[2425]
+```
+
+
+## Test Dataset
+
+```{r}
+# let's look at the test dataset
+
+str(test)
+
+# look at the week info
+table(test$Semana)
+
+#look at the products, are all of them available in training dataset?
+train_prods <- unique(train$Producto_ID)
+
+test_prods <- unique(test$Producto_ID)
+
+# are the products equal
+setequal(train_prods, test_prods)
+
+# number of products equal
+length(intersect(train_prods, test_prods))
+
+# get the new products in test dataset
+new_prods_in_test <- setdiff(test_prods, train_prods)
+
+# number of new products in test dataset
+length(new_prods_in_test)
+
+## look at Agency ID (Sales Depot ID)
+setequal(train$Agencia_ID, test$Agencia_ID)
+
+## Channel ID (Sales chaneel ID)
+setequal(train$Canal_ID, test$Canal_ID)
+
+## Route ID ( Ruta_SAK)
+setequal(train$Ruta_SAK, test$Ruta_SAK)
+
+intersect_routes <- intersect(train$Ruta_SAK, test$Ruta_SAK)
+
+#new routes in test
+test_new_routes <- setdiff(test$Ruta_SAK, train$Ruta_SAK)
+
+is.element(test_new_routes[1], test$Ruta_SAK)
+
+## examine the client IDs
+setequal(train$Cliente_ID, test$Cliente_ID)
+
+new_test_clients <- setdiff(test$Cliente_ID, train$Cliente_ID)
+
+# how many new clients?
+length(new_test_clients)
+
+is.element(new_test_clients[1], test$Cliente_ID)
+```
+
+## Plots
+
+```{r}
+library("ggplot2")
+```
+
+## Weekly Transactions.
+
+```{r}
+# per week, h
+ggplot(train, aes(x = Semana)) + geom_histogram()
+```
+
+## Returns per week
+
+```{r}
+# returns per week
+
+returns <- train[, .( total_returns = sum(Dev_uni_proxima)), by = Semana]
+
+ggplot(returns, aes(x=Semana, y = total_returns)) + geom_line()
+
+```
+
+## Product Sales 
+
+```{r}
+
+# product wise sale (units) & return info.
+
+prodReturn <- train[, .(sales = sum(Venta_uni_hoy), returns = sum(Dev_uni_proxima)), by = Producto_ID]
+
+# product-wise sales (units)
+ggplot(prodReturn, aes(x = Producto_ID, y = sales)) + geom_point()
+
+
+```
+
+## Product wise Sale vs Return 
+
+```{r}
+# product wise returns
+ggplot(prodReturn, aes(x = Producto_ID, y = returns, color = returns)) + geom_point() +
+  scale_color_gradient(low="blue", high="red")
+```
+
+## Demand Vs Sales
+
+```{r}
+# use just a fraction to plot as the table is huge!
+# demand vs sales
+# Demanda_uni_quil vs Venta_hoy
+
+library("dplyr")
+ggplot(train %>% sample_frac(0.05),aes(x = Venta_uni_hoy , y = Demanda_uni_equil)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous(name = "Sales") +
+  scale_y_continuous(name = "Demand") +
+  ggtitle("Demand Vs Sales (in terms of units)")
+```
